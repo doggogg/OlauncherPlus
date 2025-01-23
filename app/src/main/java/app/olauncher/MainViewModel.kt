@@ -252,23 +252,59 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         homeAppAlignment.value = prefs.homeAlignment
     }
 
-    fun getTodaysScreenTime() {
-        viewModelScope.launch {
-            val usageStatsManager = appContext.getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
+   fun getTodaysScreenTime() {
+    viewModelScope.launch {
+        // Ensure permission is granted before proceeding
+        if (!hasUsageStatsPermission()) {
+            // Handle the case where permission isn't granted
+            return@launch
+        }
 
-            val calendar = Calendar.getInstance()
-            calendar.set(Calendar.HOUR_OF_DAY, 0)
-            calendar.set(Calendar.MINUTE, 0)
-            calendar.set(Calendar.SECOND, 0)
+        val usageStatsManager = appContext.getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
 
-            val usageStats = usageStatsManager.queryUsageStats(
-                UsageStatsManager.INTERVAL_DAILY,
-                calendar.timeInMillis,
-                calendar.timeInMillis + ONE_DAY_IN_MILLIS
-            )
-            val totalTimeInMillis = usageStats.sumOf { it.totalTimeInForeground }
-            val viewTimeSpent = appContext.formattedTimeSpent(totalTimeInMillis)
-            screenTimeValue.postValue(viewTimeSpent)
+        // Get the start and end of today
+        val calendar = Calendar.getInstance()
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        val startTime = calendar.timeInMillis
+
+        // Set to the end of the day (23:59:59)
+        calendar.set(Calendar.HOUR_OF_DAY, 23)
+        calendar.set(Calendar.MINUTE, 59)
+        calendar.set(Calendar.SECOND, 59)
+        val endTime = calendar.timeInMillis
+
+        // Query usage stats for today
+        val usageStats = usageStatsManager.queryUsageStats(
+            UsageStatsManager.INTERVAL_DAILY,
+            startTime,
+            endTime
+        )
+
+        // If no data, handle accordingly
+        if (usageStats.isNullOrEmpty()) {
+            // Handle the case where no usage stats were found
+            screenTimeValue.postValue("No data available")
+            return@launch
+        }
+
+        // Calculate total screen time today
+        val totalTimeInMillis = usageStats.sumOf { it.totalTimeInForeground }
+        
+        // Format the time into a readable format
+        val formattedTimeSpent = appContext.formattedTimeSpent(totalTimeInMillis)
+        screenTimeValue.postValue(formattedTimeSpent)
+    }
+}
+
+// Helper function to check if the app has permission to access usage stats
+private fun hasUsageStatsPermission(): Boolean {
+    val usageStatsManager = appContext.getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
+    val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, 0, System.currentTimeMillis())
+    return stats != null && stats.isNotEmpty()
+}
+
         }
     }
 }
